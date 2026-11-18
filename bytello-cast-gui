@@ -81,7 +81,7 @@ class Win(QMainWindow):
         v.addLayout(row)
 
         self.r_desktop = QRadioButton("Whole screen")
-        self.r_tab = QRadioButton("A browser tab (opens in the helper browser)")
+        self.r_tab = QRadioButton("A browser tab - with audio (opens in the helper browser)")
         v.addWidget(self.r_desktop)
         v.addWidget(self.r_tab)
 

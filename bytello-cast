@@ -22,7 +22,7 @@ def start_brave(url):
     env = [f"-E{k}={os.environ[k]}" for k in ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY") if k in os.environ]
     subprocess.run(["systemd-run", "--user", f"--unit={UNIT}", "--collect", *env,
         shutil.which("brave-browser") or "brave-browser", f"--user-data-dir={PROFILE}",
-        f"--remote-debugging-port={PORT}", "--no-first-run", "--no-default-browser-check",
+        f"--remote-debugging-port={PORT}", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--no-default-browser-check",
         "--load-media-router-component-extension=1", "--enable-features=MediaRouter", url],
         check=True, capture_output=True)
     for _ in range(40):

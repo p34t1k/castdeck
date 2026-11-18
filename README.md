@@ -25,7 +25,7 @@ The laptop and panel must be on the same network (mDNS must work).
 - Cold start takes ~15-20 s (Brave starts, then Cast discovery must settle); with "Keep helper browser running" it is faster.
   Starting mirroring too early crashes Brave, hence `--settle` (default 12 s).
 - The helper browser uses its own profile in `~/.config/bytello-cast/brave`.
-- Video only; audio is not sent in this version.
+- Audio: **tab mode carries the tab's audio** (verified: separate Opus stream on the wire). **Whole-screen mode is video only** - Chrome on Linux has no system-audio capture for desktop mirroring (tested, incl. the PulseAudio loopback features). A screen+audio relay-page prototype (`relay.html`, untracked) is not working yet.
 - Not affiliated with Bytello or Google.
 
 ## License
