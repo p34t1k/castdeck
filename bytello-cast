@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""bytello-cast: mirror to a Bytello panel (Google Cast / Chrome Cast Streaming)
+by driving a dedicated Brave instance over the DevTools 'Cast' domain.
+  bytello-cast            mirror a tab (default: opens about:blank, or --url)
+  bytello-cast --desktop  mirror the whole desktop (Brave/portal picker appears)
+  bytello-cast --list     list Cast sinks and exit
+Ctrl+C stops mirroring.  Brave profile: ~/.config/bytello-cast/brave."""
+import argparse, asyncio, json, os, shutil, signal, subprocess, sys, time, urllib.request
+import aiohttp
+
+PORT = 9333
+PROFILE = os.path.expanduser('~/.config/bytello-cast/brave')
+UNIT = "bytello-cast-brave"
+
+def cdp_up():
+    try: urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/version", timeout=2); return True
+    except Exception: return False
+
+def start_brave(url):
+    if cdp_up(): return
+    os.makedirs(PROFILE, exist_ok=True)
+    env = [f"-E{k}={os.environ[k]}" for k in ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY") if k in os.environ]
+    subprocess.run(["systemd-run", "--user", f"--unit={UNIT}", "--collect", *env,
+        shutil.which("brave-browser") or "brave-browser", f"--user-data-dir={PROFILE}",
+        f"--remote-debugging-port={PORT}", "--no-first-run", "--no-default-browser-check",
+        "--load-media-router-component-extension=1", "--enable-features=MediaRouter", url],
+        check=True, capture_output=True)
+    for _ in range(40):
+        if cdp_up(): return
+        time.sleep(0.5)
+    sys.exit("Brave did not start.")
+
+def page_ws():
+    tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json"))
+    return [t for t in tabs if t["type"] == "page"][0]["webSocketDebuggerUrl"]
+
+async def run(a):
+    async with aiohttp.ClientSession() as s, s.ws_connect(page_ws(), max_msg_size=0) as ws:
+        n = 0
+        async def call(m, p=None):
+            nonlocal n; n += 1
+            await ws.send_json({"id": n, "method": m, "params": p or {}})
+        await call("Cast.enable")
+        loop = asyncio.get_event_loop(); stop = asyncio.Event()
+        for sg in (signal.SIGINT, signal.SIGTERM): loop.add_signal_handler(sg, stop.set)
+        t0 = loop.time(); end = t0 + a.wait; started = False; sinks = []
+        while not stop.is_set():
+            try: m = await ws.receive_json(timeout=1)
+            except asyncio.TimeoutError:
+                m = {}
+                if not started and not a.list and loop.time() > end and not [x for x in sinks if a.name.lower() in x["name"].lower()]:
+                    sys.exit(f"Panel '{a.name}' not found.")
+                if a.list and loop.time() > end: break
+            meth = m.get("method")
+            if meth == "Cast.sinksUpdated": sinks = m["params"]["sinks"]
+            elif meth == "Cast.issueUpdated": print("Cast issue:", m["params"].get("issueMessage"))
+            elif "error" in m: print("CDP error:", m["error"])
+            hit = [x["name"] for x in sinks if a.name.lower() in x["name"].lower()]
+            if hit and not started and not a.list and loop.time() - t0 >= a.settle:
+                await call("Cast.setSinkToUse", {"sinkName": hit[0]})
+                await call("Cast.startDesktopMirroring" if a.desktop else "Cast.startTabMirroring",
+                           {"sinkName": hit[0]})
+                started = True; print(f"Mirroring {'desktop' if a.desktop else 'tab'} -> {hit[0]}. Ctrl+C to stop.")
+        if a.list: print("\n".join(sorted({x['name'] for x in sinks})) or "(none)")
+        if started:
+            try: await call("Cast.stopCasting", {"sinkName": hit[0]}); await asyncio.sleep(0.5)
+            except Exception: pass
+            print("Stopped.")
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--name", default="Bytello"); ap.add_argument("--desktop", action="store_true")
+    ap.add_argument("--url", default="about:blank"); ap.add_argument("--list", action="store_true")
+    ap.add_argument("--wait", type=int, default=30, help="seconds to wait for the panel")
+    ap.add_argument("--settle", type=int, default=12, help="seconds of Cast discovery before mirroring (starting too early crashes Brave)")
+    ap.add_argument("--quit-browser", action="store_true", help="stop the helper Brave and exit")
+    a = ap.parse_args()
+    if a.quit_browser:
+        subprocess.run(["systemctl", "--user", "stop", UNIT]); return
+    start_brave(a.url)
+    asyncio.run(run(a))
+
+if __name__ == "__main__":
+    main()

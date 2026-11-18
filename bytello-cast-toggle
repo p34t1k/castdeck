@@ -1,0 +1,12 @@
+#!/bin/sh
+# Start/stop casting the whole laptop screen to the Bytello panel (hotkey-friendly).
+HERE="$(dirname "$(readlink -f "$0")")"; U=bytello-cast-session
+if systemctl --user is-active --quiet $U; then
+  systemctl --user kill -s INT $U; sleep 2; systemctl --user stop $U 2>/dev/null
+  notify-send -i video-display "Bytello cast" "Stopped" 2>/dev/null
+else
+  notify-send -i video-display "Bytello cast" "Connecting to panel..." 2>/dev/null
+  systemd-run --user --unit=$U --collect -E WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+    -E XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" -E DISPLAY="$DISPLAY" \
+    "$HERE/.venv/bin/python" -u "$HERE/bytello-cast" --desktop >/dev/null
+fi

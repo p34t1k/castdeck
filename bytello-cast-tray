@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""System-tray app: one click to cast the whole laptop screen to a Bytello panel."""
+import os, subprocess, sys
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap, QPen
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+UNIT = "bytello-cast-session"
+PY = os.path.join(HERE, ".venv", "bin", "python")
+CLI = os.path.join(HERE, "bytello-cast")
+GREY = "#9aa0a6"
+
+
+def sh(*a):
+    return subprocess.run(a, capture_output=True, text=True)
+
+
+def active():
+    return sh("systemctl", "--user", "is-active", UNIT).stdout.strip() in ("active", "activating")
+
+
+def streaming():
+    # the CLI prints this line once Cast has actually started
+    out = sh("journalctl", "--user", "-u", UNIT, "-n", "20", "--no-pager", "-o", "cat").stdout
+    return "Mirroring" in out
+
+
+def icon(color):
+    pm = QPixmap(64, 64)
+    pm.fill(QColor(0, 0, 0, 0))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), 5))
+    p.drawRoundedRect(6, 10, 52, 34, 5, 5)
+    p.drawLine(22, 54, 42, 54)
+    p.drawLine(32, 44, 32, 54)
+    if color != GREY:
+        p.setBrush(QColor(color))
+        p.drawEllipse(24, 20, 16, 16)
+    p.end()
+    return QIcon(pm)
+
+
+app = QApplication(sys.argv)
+app.setQuitOnLastWindowClosed(False)
+tray = QSystemTrayIcon(icon(GREY))
+tray.setToolTip("Bytello Cast")
+menu = QMenu()
+status = QAction("Idle")
+status.setEnabled(False)
+toggle = QAction("Cast whole screen to panel")
+tab = QAction("Cast a browser tab instead")
+quit_ = QAction("Quit")
+for a in (status, toggle, tab):
+    menu.addAction(a)
+menu.addSeparator()
+menu.addAction(quit_)
+tray.setContextMenu(menu)
+
+
+def start(flag):
+    env = [f"-E{k}={os.environ[k]}" for k in ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY") if k in os.environ]
+    sh("systemd-run", "--user", f"--unit={UNIT}", "--collect", *env, PY, "-u", CLI, *flag)
+    tray.showMessage("Bytello Cast", "Connecting to the panel (can take 15-40 s)...",
+                     QSystemTrayIcon.MessageIcon.Information, 4000)
+
+
+def stop():
+    sh("systemctl", "--user", "kill", "-s", "INT", UNIT)
+    QTimer.singleShot(2500, lambda: sh("systemctl", "--user", "stop", UNIT))
+
+
+def on_toggle(*_):
+    stop() if active() else start(["--desktop"])
+
+
+def on_tab(*_):
+    stop() if active() else start([])
+
+
+def on_quit(*_):
+    if active():
+        stop()
+    QTimer.singleShot(3000, app.quit)
+
+
+toggle.triggered.connect(on_toggle)
+tab.triggered.connect(on_tab)
+quit_.triggered.connect(on_quit)
+tray.activated.connect(lambda r: on_toggle() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
+
+
+def refresh():
+    if not active():
+        tray.setIcon(icon(GREY)); status.setText("Idle")
+        toggle.setText("Cast whole screen to panel"); tab.setEnabled(True)
+    elif streaming():
+        tray.setIcon(icon("#2ecc71")); status.setText("Casting")
+        toggle.setText("Stop casting"); tab.setEnabled(False)
+    else:
+        tray.setIcon(icon("#f1c40f")); status.setText("Connecting...")
+        toggle.setText("Cancel"); tab.setEnabled(False)
+
+
+timer = QTimer()
+timer.timeout.connect(refresh)
+timer.start(2000)
+refresh()
+tray.show()
+sys.exit(app.exec())
