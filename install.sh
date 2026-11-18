@@ -6,13 +6,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 python3 -m venv --system-site-packages "$HERE/.venv"
 "$HERE/.venv/bin/pip" install -q -r "$HERE/requirements.txt"
 mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications"
-for f in bytello-cast bytello-cast-toggle bytello-cast-tray; do ln -sf "$HERE/$f" "$HOME/.local/bin/$f"; done
+for f in bytello-cast bytello-cast-toggle bytello-cast-tray bytello-cast-gui; do ln -sf "$HERE/$f" "$HOME/.local/bin/$f"; done
 cat > "$HOME/.local/share/applications/bytello-cast.desktop" <<D
 [Desktop Entry]
 Type=Application
 Name=Bytello Cast
 Comment=Cast the whole laptop screen to a Bytello panel
-Exec=$HERE/bytello-cast-tray
+Exec=$HERE/bytello-cast-gui
 Icon=video-display
 Terminal=false
 Categories=Utility;AudioVideo;
@@ -21,4 +21,4 @@ if [ "$1" = "--autostart" ]; then
   mkdir -p "$HOME/.config/autostart"
   cp "$HOME/.local/share/applications/bytello-cast.desktop" "$HOME/.config/autostart/"
 fi
-echo "Installed. Launch 'Bytello Cast' from the app menu, or run: bytello-cast-tray"
+echo "Installed. Launch 'Bytello Cast' from the app menu, or run: bytello-cast-gui"

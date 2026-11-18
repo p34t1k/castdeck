@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""Bytello Cast - window + tray app to cast the whole laptop screen to a Bytello panel."""
+import os, subprocess, sys
+from PyQt6.QtCore import QProcess, QSettings, QTimer, Qt
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QMainWindow,
+                             QMenu, QPlainTextEdit, QPushButton, QRadioButton, QSystemTrayIcon,
+                             QVBoxLayout, QWidget)
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+UNIT = "bytello-cast-session"
+PY = os.path.join(HERE, ".venv", "bin", "python")
+CLI = os.path.join(HERE, "bytello-cast")
+GREY, YELLOW, GREEN, RED = "#9aa0a6", "#f1c40f", "#2ecc71", "#e74c3c"
+ENVKEYS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY")
+
+
+def sh(*a):
+    return subprocess.run(a, capture_output=True, text=True)
+
+
+def unit_active():
+    return sh("systemctl", "--user", "is-active", UNIT).stdout.strip() in ("active", "activating")
+
+
+def unit_log():
+    inv = sh("systemctl", "--user", "show", "-p", "InvocationID", "--value", UNIT).stdout.strip()
+    if not inv:
+        return ""
+    return sh("journalctl", "--user", f"_SYSTEMD_INVOCATION_ID={inv}", "--no-pager", "-o", "cat").stdout
+
+
+def make_icon(color, dot=True):
+    pm = QPixmap(64, 64)
+    pm.fill(QColor(0, 0, 0, 0))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), 5))
+    p.drawRoundedRect(6, 10, 52, 34, 5, 5)
+    p.drawLine(22, 54, 42, 54)
+    p.drawLine(32, 44, 32, 54)
+    if dot:
+        p.setBrush(QColor(color))
+        p.drawEllipse(24, 20, 16, 16)
+    p.end()
+    return QIcon(pm)
+
+
+class Win(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.cfg = QSettings("bytello-cast", "bytello-cast")
+        self.setWindowTitle("Bytello Cast")
+        self.setWindowIcon(make_icon(GREEN))
+        self.resize(460, 520)
+        self.want_cast = False       # user intends to be casting (for auto-reconnect)
+        self.retries = 0
+        self.scan = None
+
+        root = QWidget()
+        self.setCentralWidget(root)
+        v = QVBoxLayout(root)
+
+        self.status = QLabel("Idle")
+        f = QFont(); f.setPointSize(16); f.setBold(True)
+        self.status.setFont(f)
+        self.detail = QLabel("Pick a panel and press Start.")
+        self.detail.setWordWrap(True)
+        v.addWidget(self.status)
+        v.addWidget(self.detail)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Panel:"))
+        self.panel = QComboBox()
+        self.panel.setEditable(True)
+        self.panel.setMinimumWidth(200)
+        row.addWidget(self.panel, 1)
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.clicked.connect(self.scan_panels)
+        row.addWidget(self.refresh_btn)
+        v.addLayout(row)
+
+        self.r_desktop = QRadioButton("Whole screen")
+        self.r_tab = QRadioButton("A browser tab (opens in the helper browser)")
+        v.addWidget(self.r_desktop)
+        v.addWidget(self.r_tab)
+
+        self.c_warm = QCheckBox("Keep helper browser running (faster start)")
+        self.c_recon = QCheckBox("Reconnect automatically if the cast drops")
+        self.c_tray = QCheckBox("Keep running in the tray when the window is closed")
+        for c in (self.c_warm, self.c_recon, self.c_tray):
+            v.addWidget(c)
+
+        self.btn = QPushButton("Start casting")
+        self.btn.setMinimumHeight(48)
+        bf = QFont(); bf.setPointSize(13); bf.setBold(True)
+        self.btn.setFont(bf)
+        self.btn.clicked.connect(self.toggle)
+        v.addWidget(self.btn)
+
+        v.addWidget(QLabel("Log:"))
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMaximumBlockCount(300)
+        v.addWidget(self.log, 1)
+
+        # settings
+        self.panel.setCurrentText(self.cfg.value("panel", "Bytello"))
+        mode = self.cfg.value("mode", "desktop")
+        (self.r_desktop if mode == "desktop" else self.r_tab).setChecked(True)
+        self.c_warm.setChecked(self.cfg.value("warm", "false") == "true")
+        self.c_recon.setChecked(self.cfg.value("recon", "true") == "true")
+        self.c_tray.setChecked(self.cfg.value("tray", "true") == "true")
+        for c in (self.c_warm, self.c_recon, self.c_tray, self.r_desktop):
+            c.toggled.connect(self.save)
+        self.panel.editTextChanged.connect(self.save)
+        self.c_warm.toggled.connect(self.apply_warm)
+
+        # tray
+        self.tray = QSystemTrayIcon(make_icon(GREY, False), self)
+        m = QMenu()
+        self.t_status = QAction("Idle"); self.t_status.setEnabled(False)
+        self.t_toggle = QAction("Start casting"); self.t_toggle.triggered.connect(self.toggle)
+        t_show = QAction("Show window"); t_show.triggered.connect(self.show_win)
+        t_quit = QAction("Quit"); t_quit.triggered.connect(self.quit_app)
+        for a in (self.t_status, self.t_toggle, t_show):
+            m.addAction(a)
+        m.addSeparator(); m.addAction(t_quit)
+        self.tray.setContextMenu(m)
+        self.tray.activated.connect(lambda r: self.show_win() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
+        self.tray.show()
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.tick)
+        self.timer.start(1500)
+        self.tick()
+        self.scan_panels()
+        if self.c_warm.isChecked():
+            self.apply_warm()
+
+    # ---- settings -------------------------------------------------
+    def save(self, *_):
+        self.cfg.setValue("panel", self.panel.currentText())
+        self.cfg.setValue("mode", "desktop" if self.r_desktop.isChecked() else "tab")
+        self.cfg.setValue("warm", "true" if self.c_warm.isChecked() else "false")
+        self.cfg.setValue("recon", "true" if self.c_recon.isChecked() else "false")
+        self.cfg.setValue("tray", "true" if self.c_tray.isChecked() else "false")
+
+    def apply_warm(self, *_):
+        if self.c_warm.isChecked():
+            QProcess.startDetached(PY, [CLI, "--warm"])
+
+    # ---- panel discovery ------------------------------------------
+    def scan_panels(self):
+        if self.scan:
+            return
+        self.refresh_btn.setEnabled(False)
+        self.refresh_btn.setText("Scanning...")
+        self.scan = QProcess(self)
+        self.scan.finished.connect(self.scan_done)
+        self.scan.start(PY, [CLI, "--list", "--wait", "14"])
+
+    def scan_done(self):
+        out = bytes(self.scan.readAllStandardOutput()).decode(errors="replace")
+        names = [l.strip() for l in out.splitlines() if l.strip() and not l.startswith("(") and "Helper" not in l]
+        cur = self.panel.currentText()
+        self.panel.blockSignals(True)
+        self.panel.clear()
+        self.panel.addItems(names)
+        self.panel.setCurrentText(cur if cur else (names[0] if names else "Bytello"))
+        if names and cur not in names and cur in ("", "Bytello"):
+            self.panel.setCurrentText(names[0])
+        self.panel.blockSignals(False)
+        self.save()
+        self.append(f"Found {len(names)} cast target(s): {', '.join(names) or 'none'}")
+        self.scan = None
+        self.refresh_btn.setEnabled(True)
+        self.refresh_btn.setText("Refresh")
+
+    # ---- start / stop ---------------------------------------------
+    def start(self):
+        name = self.panel.currentText().strip() or "Bytello"
+        args = ["--name", name] + (["--desktop"] if self.r_desktop.isChecked() else [])
+        env = [f"-E{k}={os.environ[k]}" for k in ENVKEYS if k in os.environ]
+        sh("systemctl", "--user", "reset-failed", UNIT)
+        r = sh("systemd-run", "--user", f"--unit={UNIT}", "--collect", *env, PY, "-u", CLI, *args)
+        if r.returncode:
+            self.append("Could not start: " + r.stderr.strip())
+            return
+        self.want_cast = True
+        self.append(f"Starting cast to '{name}'...")
+
+    def stop(self):
+        self.want_cast = False
+        self.retries = 0
+        sh("systemctl", "--user", "kill", "-s", "INT", UNIT)
+        QTimer.singleShot(2500, lambda: sh("systemctl", "--user", "stop", UNIT))
+        self.append("Stopping...")
+
+    def toggle(self, *_):
+        if unit_active():
+            self.stop()
+        else:
+            self.retries = 0
+            self.start()
+
+    # ---- status loop ----------------------------------------------
+    def append(self, s):
+        self.log.appendPlainText(s)
+
+    def tick(self):
+        active = unit_active()
+        text = unit_log() if active else ""
+        if active and "Mirroring" in text:
+            state, col = "Casting", GREEN
+            self.detail.setText("Your screen is on the panel." if self.r_desktop.isChecked() else "Tab is on the panel.")
+            self.retries = 0
+        elif active:
+            state, col = "Connecting...", YELLOW
+            self.detail.setText("Starting the helper browser and finding the panel (about 15 s).")
+        else:
+            if self.want_cast:               # dropped unexpectedly
+                if self.c_recon.isChecked() and self.retries < 3:
+                    self.retries += 1
+                    self.append(f"Cast dropped - reconnecting ({self.retries}/3)...")
+                    self.start()
+                    return
+                self.want_cast = False
+                state, col = "Stopped (dropped)", RED
+                self.detail.setText("The cast ended unexpectedly. See log.")
+                self.append("Cast ended unexpectedly.")
+            else:
+                state, col = "Idle", GREY
+                self.detail.setText("Pick a panel and press Start.")
+        self.status.setText(f"<span style='color:{col}'>●</span> {state}")
+        self.t_status.setText(state)
+        if active:
+            self.btn.setText("Stop casting"); self.t_toggle.setText("Stop casting")
+        else:
+            self.btn.setText("Start casting"); self.t_toggle.setText("Start casting")
+        self.tray.setIcon(make_icon(col, state == "Casting"))
+        self.tray.setToolTip("Bytello Cast: " + state)
+        if text:
+            lines = [l for l in text.splitlines() if l.strip() and "ERROR" not in l]
+            shown = "\n".join(lines[-12:])
+            if self.log.toPlainText().find(shown) < 0 and shown:
+                self.append(shown.splitlines()[-1])
+
+    # ---- window -----------------------------------------------------
+    def show_win(self):
+        self.show(); self.raise_(); self.activateWindow()
+
+    def closeEvent(self, e):
+        if self.c_tray.isChecked() and self.tray.isVisible():
+            e.ignore(); self.hide()
+        else:
+            self.quit_app()
+
+    def quit_app(self, *_):
+        if unit_active():
+            self.stop()
+        QTimer.singleShot(3000, QApplication.instance().quit)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    w = Win()
+    w.show()
+    sys.exit(app.exec())
