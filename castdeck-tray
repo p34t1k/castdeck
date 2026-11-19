@@ -49,10 +49,9 @@ tray.setToolTip("Castdeck")
 menu = QMenu()
 status = QAction("Idle")
 status.setEnabled(False)
-toggle = QAction("Cast whole screen to panel")
-tab = QAction("Cast a browser tab instead")
+toggle = QAction("Cast whole screen")
 quit_ = QAction("Quit")
-for a in (status, toggle, tab):
+for a in (status, toggle):
     menu.addAction(a)
 menu.addSeparator()
 menu.addAction(quit_)
@@ -62,7 +61,7 @@ tray.setContextMenu(menu)
 def start(flag):
     env = [f"-E{k}={os.environ[k]}" for k in ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY") if k in os.environ]
     sh("systemd-run", "--user", f"--unit={UNIT}", "--collect", *env, PY, "-u", CLI, *flag)
-    tray.showMessage("Castdeck", "Connecting to the panel (can take 15-40 s)...",
+    tray.showMessage("Castdeck", "Connecting to the panel ...",
                      QSystemTrayIcon.MessageIcon.Information, 4000)
 
 
@@ -72,10 +71,6 @@ def stop():
 
 
 def on_toggle(*_):
-    stop() if active() else start(["--desktop"])
-
-
-def on_tab(*_):
     stop() if active() else start([])
 
 
@@ -86,7 +81,6 @@ def on_quit(*_):
 
 
 toggle.triggered.connect(on_toggle)
-tab.triggered.connect(on_tab)
 quit_.triggered.connect(on_quit)
 tray.activated.connect(lambda r: on_toggle() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
 
@@ -94,13 +88,13 @@ tray.activated.connect(lambda r: on_toggle() if r == QSystemTrayIcon.ActivationR
 def refresh():
     if not active():
         tray.setIcon(icon(GREY)); status.setText("Idle")
-        toggle.setText("Cast whole screen to panel"); tab.setEnabled(True)
+        toggle.setText("Cast whole screen")
     elif streaming():
         tray.setIcon(icon("#2ecc71")); status.setText("Casting")
-        toggle.setText("Stop casting"); tab.setEnabled(False)
+        toggle.setText("Stop casting")
     else:
         tray.setIcon(icon("#f1c40f")); status.setText("Connecting...")
-        toggle.setText("Cancel"); tab.setEnabled(False)
+        toggle.setText("Cancel")
 
 
 timer = QTimer()

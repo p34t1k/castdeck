@@ -1,20 +1,24 @@
 # Castdeck
 
-Cast your **whole Linux screen** (or a single tab) to any **Google Cast** receiver on your network:
-Chromecast, Google TV, Android TV, Nest displays, smart TVs and interactive classroom panels
-(tested with a Bytello ScreenSharePro panel). It works on Wayland and X11, and needs no
-reverse engineering: Castdeck drives a dedicated Brave/Chromium instance through the DevTools
-`Cast` domain and supervises it, restarting and resuming the cast if it drops.
+Cast your **whole Linux screen, with desktop audio,** to any **Google Cast** receiver on your network:
+Chromecast, Google TV, Android TV, smart TVs and interactive classroom panels
+(developed against a Bytello ScreenSharePro panel). Standalone: **no browser needed.**
 
-- `castdeck-gui` - **main app**: window with receiver picker, whole-screen/tab mode, Start/Stop, live status + log, auto-reconnect, minimise to tray
+Castdeck captures the screen through the desktop portal (PipeWire), encodes H.264 + Opus with
+GStreamer, and speaks the Cast Streaming protocol itself (written from Google's open-source
+`openscreen` specification). It reconnects automatically if the receiver drops.
+
+- `castdeck-gui` - **main app**: receiver picker, Start/Stop, live status + log, auto-reconnect, tray
 - `castdeck-tray` - tray-only version: click to cast, click to stop (grey = idle, yellow = connecting, green = casting)
-- `castdeck` - CLI: `--desktop` (whole screen), default tab mirroring, `--list`, `--name`, `--quit-browser`
+- `castdeck` - CLI: `--list`, `--name`, `--host`, `--fps`, `--bitrate`, `--no-audio`, `--reset`
 - `castdeck-toggle` - one-shot start/stop script, handy for a keyboard shortcut
+- `castdeck-brave` - legacy backend that drives a Brave/Chromium Cast engine instead (kept as a fallback)
 
 ## Requirements
-Linux with a systemd user session, Brave (`brave-browser`) or a Chromium that exposes the `Cast`
-DevTools domain, Python 3 with PyQt6 (GUI/tray) and `aiohttp`. Tested on Kali, KDE Plasma (Wayland).
-The computer and receiver must be on the same network (mDNS must work).
+Linux (Wayland/KDE tested) with systemd user session, `xdg-desktop-portal` + PipeWire, Avahi (`avahi-browse`),
+`pactl`, Python 3 with `python3-gi`, `python3-dbus`, `python3-cryptography`, PyQt6 (GUI/tray), and GStreamer
+plugins: `pipewire`, `x264` (plugins-ugly), `opus`, `pulseaudio`, `videoconvert`, `videoscale`.
+Computer and receiver must be on the same network (mDNS must work).
 
 ## Install
 ```
@@ -23,18 +27,17 @@ The computer and receiver must be on the same network (mDNS must work).
 
 ## Usage
 ```
-castdeck --list                          # show receivers found on the network
-castdeck --desktop --name "Living Room"  # cast the whole screen (name is a substring match; omit to use the first receiver)
-castdeck --quit-browser                  # stop the helper browser
+castdeck --list                          # receivers found on the network
+castdeck --name "Living Room"            # cast the whole screen (name is a substring; omit for the first receiver)
+castdeck --host 192.168.1.45             # skip discovery
+castdeck --reset                         # forget the saved screen choice (shows the picker again)
 ```
+The first cast shows a screen-share picker; your choice is remembered, so reconnects need no clicks.
 
 ## Notes
-- Cold start takes ~15-20 s (the browser starts, then Cast discovery must settle); with "Keep helper browser running" it is faster.
-  Starting mirroring too early crashes the browser, hence `--settle` (default 12 s).
-- On Wayland, a screen-share picker appears the first time; choose the screen and share.
-- The helper browser uses its own profile in `~/.config/castdeck/brave`.
-- Audio: **tab mode carries the tab's audio**. **Whole-screen mode is video only**, because Chrome on Linux has no system-audio capture for desktop mirroring.
-- Verified over a full 4-hour session with no drops on a Bytello panel.
+- Audio is the desktop's default output (its monitor source).
+- Receivers must support Chrome Mirroring (app 0F5096E8): standard Chromecasts and Bytello panels do. Others are untested.
+- Tested on one receiver and one Linux setup so far. Issues and reports are welcome.
 - Not affiliated with Google or Bytello.
 
 ## License

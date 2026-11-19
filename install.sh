@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 python3 -m venv --system-site-packages "$HERE/.venv"
 "$HERE/.venv/bin/pip" install -q -r "$HERE/requirements.txt"
 mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications"
-for f in castdeck castdeck-toggle castdeck-tray castdeck-gui; do ln -sf "$HERE/$f" "$HOME/.local/bin/$f"; done
+for f in castdeck castdeck-brave castdeck-toggle castdeck-tray castdeck-gui; do ln -sf "$HERE/$f" "$HOME/.local/bin/$f"; done
 cat > "$HOME/.local/share/applications/castdeck.desktop" <<D
 [Desktop Entry]
 Type=Application

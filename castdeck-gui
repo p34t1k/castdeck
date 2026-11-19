@@ -64,7 +64,7 @@ class Win(QMainWindow):
         self.status = QLabel("Idle")
         f = QFont(); f.setPointSize(16); f.setBold(True)
         self.status.setFont(f)
-        self.detail = QLabel("Pick a panel and press Start.")
+        self.detail = QLabel("Pick a receiver and press Start.")
         self.detail.setWordWrap(True)
         v.addWidget(self.status)
         v.addWidget(self.detail)
@@ -81,14 +81,11 @@ class Win(QMainWindow):
         v.addLayout(row)
 
         self.r_desktop = QRadioButton("Whole screen")
-        self.r_tab = QRadioButton("A browser tab - with audio (opens in the helper browser)")
         v.addWidget(self.r_desktop)
-        v.addWidget(self.r_tab)
 
-        self.c_warm = QCheckBox("Keep helper browser running (faster start)")
         self.c_recon = QCheckBox("Reconnect automatically if the cast drops")
         self.c_tray = QCheckBox("Keep running in the tray when the window is closed")
-        for c in (self.c_warm, self.c_recon, self.c_tray):
+        for c in (self.c_recon, self.c_tray):
             v.addWidget(c)
 
         self.btn = QPushButton("Start casting")
@@ -106,15 +103,13 @@ class Win(QMainWindow):
 
         # settings
         self.panel.setCurrentText(self.cfg.value("panel", ""))
-        mode = self.cfg.value("mode", "desktop")
-        (self.r_desktop if mode == "desktop" else self.r_tab).setChecked(True)
-        self.c_warm.setChecked(self.cfg.value("warm", "false") == "true")
+        self.r_desktop.setText("Whole screen (with desktop audio)")
+        self.r_desktop.setChecked(True)
         self.c_recon.setChecked(self.cfg.value("recon", "true") == "true")
         self.c_tray.setChecked(self.cfg.value("tray", "true") == "true")
-        for c in (self.c_warm, self.c_recon, self.c_tray, self.r_desktop):
+        for c in (self.c_recon, self.c_tray, self.r_desktop):
             c.toggled.connect(self.save)
         self.panel.editTextChanged.connect(self.save)
-        self.c_warm.toggled.connect(self.apply_warm)
 
         # tray
         self.tray = QSystemTrayIcon(make_icon(GREY, False), self)
@@ -135,20 +130,12 @@ class Win(QMainWindow):
         self.timer.start(1500)
         self.tick()
         self.scan_panels()
-        if self.c_warm.isChecked():
-            self.apply_warm()
 
     # ---- settings -------------------------------------------------
     def save(self, *_):
         self.cfg.setValue("panel", self.panel.currentText())
-        self.cfg.setValue("mode", "desktop" if self.r_desktop.isChecked() else "tab")
-        self.cfg.setValue("warm", "true" if self.c_warm.isChecked() else "false")
         self.cfg.setValue("recon", "true" if self.c_recon.isChecked() else "false")
         self.cfg.setValue("tray", "true" if self.c_tray.isChecked() else "false")
-
-    def apply_warm(self, *_):
-        if self.c_warm.isChecked():
-            QProcess.startDetached(PY, [CLI, "--warm"])
 
     # ---- panel discovery ------------------------------------------
     def scan_panels(self):
@@ -158,11 +145,11 @@ class Win(QMainWindow):
         self.refresh_btn.setText("Scanning...")
         self.scan = QProcess(self)
         self.scan.finished.connect(self.scan_done)
-        self.scan.start(PY, [CLI, "--list", "--wait", "14"])
+        self.scan.start(PY, [CLI, "--list"])
 
     def scan_done(self):
         out = bytes(self.scan.readAllStandardOutput()).decode(errors="replace")
-        names = [l.strip() for l in out.splitlines() if l.strip() and not l.startswith("(") and "Helper" not in l]
+        names = [l.split("  ")[0].strip() for l in out.splitlines() if l.strip()]
         cur = self.panel.currentText()
         self.panel.blockSignals(True)
         self.panel.clear()
@@ -213,11 +200,11 @@ class Win(QMainWindow):
         text = unit_log() if active else ""
         if active and "Mirroring" in text:
             state, col = "Casting", GREEN
-            self.detail.setText("Your screen is on the panel." if self.r_desktop.isChecked() else "Tab is on the panel.")
+            self.detail.setText("Your screen is on the receiver.")
             self.retries = 0
         elif active:
             state, col = "Connecting...", YELLOW
-            self.detail.setText("Starting the helper browser and finding the panel (about 15 s).")
+            self.detail.setText("Connecting to the receiver (a few seconds).")
         else:
             if self.want_cast:               # dropped unexpectedly
                 if self.c_recon.isChecked() and self.retries < 3:
@@ -231,7 +218,7 @@ class Win(QMainWindow):
                 self.append("Cast ended unexpectedly.")
             else:
                 state, col = "Idle", GREY
-                self.detail.setText("Pick a panel and press Start.")
+                self.detail.setText("Pick a receiver and press Start.")
         self.status.setText(f"<span style='color:{col}'>●</span> {state}")
         self.t_status.setText(state)
         if active:
