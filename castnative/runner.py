@@ -32,7 +32,7 @@ class Caster:
         mon = capture.default_monitor() if au else None
         media.start(portal.src(), f"pulsesrc device={mon}" if mon else None, self.w, self.h, self.fps, self.vb)
         self.state = "casting"
-        self.log("casting")
+        self.log("Mirroring desktop - casting")
         last, stall = vs.stats["frames"], time.time()
         try:
             while not self.stop_ev.is_set():

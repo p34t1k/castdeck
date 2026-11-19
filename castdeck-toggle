@@ -8,5 +8,5 @@ else
   notify-send -i video-display "Castdeck" "Connecting to panel..." 2>/dev/null
   systemd-run --user --unit=$U --collect -E WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
     -E XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" -E DISPLAY="$DISPLAY" \
-    "$HERE/.venv/bin/python" -u "$HERE/castdeck" --desktop >/dev/null
+    "$HERE/.venv/bin/python" -u "$HERE/castdeck" >/dev/null
 fi
