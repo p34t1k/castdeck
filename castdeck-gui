@@ -2,17 +2,63 @@
 """Castdeck - window + tray app to cast the whole laptop screen to a Cast receiver."""
 import os, subprocess, sys
 from PyQt6.QtCore import QProcess, QSettings, QTimer, Qt
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QMainWindow,
-                             QMenu, QPlainTextEdit, QPushButton, QRadioButton, QSystemTrayIcon,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtGui import QAction, QColor, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGraphicsDropShadowEffect, QHBoxLayout,
+                             QLabel, QMainWindow, QMenu, QPlainTextEdit, QPushButton, QRadioButton,
+                             QSystemTrayIcon, QVBoxLayout, QWidget)
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 UNIT = "castdeck-session"
 PY = os.path.join(HERE, ".venv", "bin", "python")
 CLI = os.path.join(HERE, "castdeck")
-GREY, YELLOW, GREEN, RED = "#9aa0a6", "#f1c40f", "#2ecc71", "#e74c3c"
+FONT_DIR = os.path.join(HERE, "assets", "fonts")
+
+# Ultron HUD palette (shared with ~/src/ultron-theme)
+BG, PANEL = "#0A1124", "#141B36"
+FG, FG_DIM = "#D6EEFC", "#666A73"
+CYAN, CYAN_BRIGHT = "#00C1E4", "#40CEFF"
+GREEN, YELLOW, RED, GREY = "#94F700", "#FFB23D", "#ED004B", FG_DIM
 ENVKEYS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY")
+
+STYLESHEET = f"""
+QMainWindow, QWidget {{ background: {BG}; color: {FG}; font-family: "Rajdhani Medium"; font-size: 11pt; }}
+QLabel {{ background: transparent; }}
+QLabel#heading {{ font-family: "Orbitron"; letter-spacing: 1px; }}
+QComboBox, QPlainTextEdit {{
+    background: {PANEL}; color: {FG}; border: 1px solid #2A3252; border-radius: 4px; padding: 4px 8px;
+}}
+QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid {CYAN_BRIGHT}; }}
+QComboBox::drop-down {{ border: none; }}
+QComboBox QAbstractItemView {{
+    background: {PANEL}; color: {FG}; selection-background-color: {CYAN}; selection-color: {BG};
+}}
+QPushButton {{
+    background: {PANEL}; color: {FG}; border: 1px solid {CYAN}; border-radius: 6px; padding: 6px 14px;
+    font-family: "Orbitron";
+}}
+QPushButton:hover {{ background: #1C2648; border: 1px solid {CYAN_BRIGHT}; }}
+QPushButton:pressed {{ background: {CYAN}; color: {BG}; }}
+QRadioButton, QCheckBox {{ background: transparent; spacing: 8px; }}
+QRadioButton::indicator, QCheckBox::indicator {{
+    width: 14px; height: 14px; border: 1px solid {CYAN}; border-radius: 3px; background: {PANEL};
+}}
+QRadioButton::indicator:checked, QCheckBox::indicator:checked {{ background: {CYAN_BRIGHT}; }}
+QMenu {{ background: {PANEL}; color: {FG}; border: 1px solid {CYAN}; }}
+QMenu::item:selected {{ background: {CYAN}; color: {BG}; }}
+"""
+
+
+def load_fonts():
+    for f in ("Orbitron.ttf", "Rajdhani-Medium.ttf"):
+        QFontDatabase.addApplicationFont(os.path.join(FONT_DIR, f))
+
+
+def glow(widget, color=CYAN_BRIGHT, radius=18):
+    eff = QGraphicsDropShadowEffect(widget)
+    eff.setColor(QColor(color))
+    eff.setOffset(0, 0)
+    eff.setBlurRadius(radius)
+    widget.setGraphicsEffect(eff)
 
 
 def sh(*a):
@@ -62,10 +108,12 @@ class Win(QMainWindow):
         v = QVBoxLayout(root)
 
         self.status = QLabel("Idle")
-        f = QFont(); f.setPointSize(16); f.setBold(True)
+        self.status.setObjectName("heading")
+        f = QFont("Orbitron"); f.setPointSize(16); f.setBold(True)
         self.status.setFont(f)
         self.detail = QLabel("Pick a receiver and press Start.")
         self.detail.setWordWrap(True)
+        self.detail.setStyleSheet(f"color: {FG_DIM};")
         v.addWidget(self.status)
         v.addWidget(self.detail)
 
@@ -90,9 +138,10 @@ class Win(QMainWindow):
 
         self.btn = QPushButton("Start casting")
         self.btn.setMinimumHeight(48)
-        bf = QFont(); bf.setPointSize(13); bf.setBold(True)
+        bf = QFont("Orbitron"); bf.setPointSize(13); bf.setBold(True)
         self.btn.setFont(bf)
         self.btn.clicked.connect(self.toggle)
+        glow(self.btn)
         v.addWidget(self.btn)
 
         v.addWidget(QLabel("Log:"))
@@ -252,6 +301,8 @@ class Win(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    load_fonts()
+    app.setStyleSheet(STYLESHEET)
     w = Win()
     w.show()
     sys.exit(app.exec())

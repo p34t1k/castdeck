@@ -9,7 +9,11 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 UNIT = "castdeck-session"
 PY = os.path.join(HERE, ".venv", "bin", "python")
 CLI = os.path.join(HERE, "castdeck")
-GREY = "#9aa0a6"
+
+# Ultron HUD palette (shared with ~/src/ultron-theme and castdeck-gui)
+BG, PANEL, FG, CYAN, GREEN, YELLOW, GREY = (
+    "#0A1124", "#141B36", "#D6EEFC", "#00C1E4", "#94F700", "#FFB23D", "#666A73")
+TRAY_QSS = f"QMenu {{ background: {PANEL}; color: {FG}; border: 1px solid {CYAN}; }} QMenu::item:selected {{ background: {CYAN}; color: {BG}; }}"
 
 
 def sh(*a):
@@ -55,6 +59,7 @@ for a in (status, toggle):
     menu.addAction(a)
 menu.addSeparator()
 menu.addAction(quit_)
+menu.setStyleSheet(TRAY_QSS)
 tray.setContextMenu(menu)
 
 
@@ -90,10 +95,10 @@ def refresh():
         tray.setIcon(icon(GREY)); status.setText("Idle")
         toggle.setText("Cast whole screen")
     elif streaming():
-        tray.setIcon(icon("#2ecc71")); status.setText("Casting")
+        tray.setIcon(icon(GREEN)); status.setText("Casting")
         toggle.setText("Stop casting")
     else:
-        tray.setIcon(icon("#f1c40f")); status.setText("Connecting...")
+        tray.setIcon(icon(YELLOW)); status.setText("Connecting...")
         toggle.setText("Cancel")
 
 
