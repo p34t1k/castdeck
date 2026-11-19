@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bytello Cast - window + tray app to cast the whole laptop screen to a Bytello panel."""
+"""Castdeck - window + tray app to cast the whole laptop screen to a Cast receiver."""
 import os, subprocess, sys
 from PyQt6.QtCore import QProcess, QSettings, QTimer, Qt
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
@@ -8,9 +8,9 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QHBoxLayout, QL
                              QVBoxLayout, QWidget)
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-UNIT = "bytello-cast-session"
+UNIT = "castdeck-session"
 PY = os.path.join(HERE, ".venv", "bin", "python")
-CLI = os.path.join(HERE, "bytello-cast")
+CLI = os.path.join(HERE, "castdeck")
 GREY, YELLOW, GREEN, RED = "#9aa0a6", "#f1c40f", "#2ecc71", "#e74c3c"
 ENVKEYS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY")
 
@@ -49,8 +49,8 @@ def make_icon(color, dot=True):
 class Win(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.cfg = QSettings("bytello-cast", "bytello-cast")
-        self.setWindowTitle("Bytello Cast")
+        self.cfg = QSettings("castdeck", "castdeck")
+        self.setWindowTitle("Castdeck")
         self.setWindowIcon(make_icon(GREEN))
         self.resize(460, 520)
         self.want_cast = False       # user intends to be casting (for auto-reconnect)
@@ -105,7 +105,7 @@ class Win(QMainWindow):
         v.addWidget(self.log, 1)
 
         # settings
-        self.panel.setCurrentText(self.cfg.value("panel", "Bytello"))
+        self.panel.setCurrentText(self.cfg.value("panel", ""))
         mode = self.cfg.value("mode", "desktop")
         (self.r_desktop if mode == "desktop" else self.r_tab).setChecked(True)
         self.c_warm.setChecked(self.cfg.value("warm", "false") == "true")
@@ -167,8 +167,8 @@ class Win(QMainWindow):
         self.panel.blockSignals(True)
         self.panel.clear()
         self.panel.addItems(names)
-        self.panel.setCurrentText(cur if cur else (names[0] if names else "Bytello"))
-        if names and cur not in names and cur in ("", "Bytello"):
+        self.panel.setCurrentText(cur if cur else (names[0] if names else ""))
+        if names and cur not in names and cur in ("", ""):
             self.panel.setCurrentText(names[0])
         self.panel.blockSignals(False)
         self.save()
@@ -179,7 +179,7 @@ class Win(QMainWindow):
 
     # ---- start / stop ---------------------------------------------
     def start(self):
-        name = self.panel.currentText().strip() or "Bytello"
+        name = self.panel.currentText().strip() or ""
         args = ["--name", name] + (["--desktop"] if self.r_desktop.isChecked() else [])
         env = [f"-E{k}={os.environ[k]}" for k in ENVKEYS if k in os.environ]
         sh("systemctl", "--user", "reset-failed", UNIT)
@@ -239,7 +239,7 @@ class Win(QMainWindow):
         else:
             self.btn.setText("Start casting"); self.t_toggle.setText("Start casting")
         self.tray.setIcon(make_icon(col, state == "Casting"))
-        self.tray.setToolTip("Bytello Cast: " + state)
+        self.tray.setToolTip("Castdeck: " + state)
         if text:
             lines = [l for l in text.splitlines() if l.strip() and "ERROR" not in l]
             shown = "\n".join(lines[-12:])

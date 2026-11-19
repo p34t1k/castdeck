@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""System-tray app: one click to cast the whole laptop screen to a Bytello panel."""
+"""System-tray app: one click to cast the whole laptop screen to a Cast receiver."""
 import os, subprocess, sys
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap, QPen
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-UNIT = "bytello-cast-session"
+UNIT = "castdeck-session"
 PY = os.path.join(HERE, ".venv", "bin", "python")
-CLI = os.path.join(HERE, "bytello-cast")
+CLI = os.path.join(HERE, "castdeck")
 GREY = "#9aa0a6"
 
 
@@ -45,7 +45,7 @@ def icon(color):
 app = QApplication(sys.argv)
 app.setQuitOnLastWindowClosed(False)
 tray = QSystemTrayIcon(icon(GREY))
-tray.setToolTip("Bytello Cast")
+tray.setToolTip("Castdeck")
 menu = QMenu()
 status = QAction("Idle")
 status.setEnabled(False)
@@ -62,7 +62,7 @@ tray.setContextMenu(menu)
 def start(flag):
     env = [f"-E{k}={os.environ[k]}" for k in ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY") if k in os.environ]
     sh("systemd-run", "--user", f"--unit={UNIT}", "--collect", *env, PY, "-u", CLI, *flag)
-    tray.showMessage("Bytello Cast", "Connecting to the panel (can take 15-40 s)...",
+    tray.showMessage("Castdeck", "Connecting to the panel (can take 15-40 s)...",
                      QSystemTrayIcon.MessageIcon.Information, 4000)
 
 

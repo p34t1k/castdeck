@@ -1,0 +1,12 @@
+#!/bin/sh
+# Start/stop casting the whole laptop screen to the Cast receiver (hotkey-friendly).
+HERE="$(dirname "$(readlink -f "$0")")"; U=castdeck-session
+if systemctl --user is-active --quiet $U; then
+  systemctl --user kill -s INT $U; sleep 2; systemctl --user stop $U 2>/dev/null
+  notify-send -i video-display "Castdeck" "Stopped" 2>/dev/null
+else
+  notify-send -i video-display "Castdeck" "Connecting to panel..." 2>/dev/null
+  systemd-run --user --unit=$U --collect -E WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+    -E XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" -E DISPLAY="$DISPLAY" \
+    "$HERE/.venv/bin/python" -u "$HERE/castdeck" --desktop >/dev/null
+fi

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""bytello-cast: mirror to a Bytello panel (Google Cast / Chrome Cast Streaming)
+"""castdeck: mirror to a Cast receiver (Google Cast / Chrome Cast Streaming)
 by driving a dedicated Brave instance over the DevTools 'Cast' domain.
-  bytello-cast            mirror a tab (default: opens about:blank, or --url)
-  bytello-cast --desktop  mirror the whole desktop
-  bytello-cast --list     list Cast sinks and exit
+  castdeck            mirror a tab (default: opens about:blank, or --url)
+  castdeck --desktop  mirror the whole desktop
+  castdeck --list     list Cast sinks and exit
 The helper browser is supervised: if it or its tab dies, it is restarted and the
-cast resumed (up to --retries times).  Ctrl+C stops.  Profile: ~/.config/bytello-cast/brave."""
+cast resumed (up to --retries times).  Ctrl+C stops.  Profile: ~/.config/castdeck/brave."""
 import argparse, asyncio, json, os, shutil, signal, subprocess, sys, time, urllib.request
 import aiohttp
 
 PORT = 9333
-PROFILE = os.path.expanduser('~/.config/bytello-cast/brave')
-UNIT = "bytello-cast-brave"
+PROFILE = os.path.expanduser('~/.config/castdeck/brave')
+UNIT = "castdeck-brave"
 STOP = None  # asyncio.Event set by signals
 
 
@@ -180,7 +180,7 @@ async def supervise(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--name", default="Bytello")
+    ap.add_argument("--name", default="")
     ap.add_argument("--desktop", action="store_true")
     ap.add_argument("--url", default="about:blank")
     ap.add_argument("--list", action="store_true")
